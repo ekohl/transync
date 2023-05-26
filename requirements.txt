@@ -1,0 +1,3 @@
+requests
+# TODO 3.3+
+transifex-python

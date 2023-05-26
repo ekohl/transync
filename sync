@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import os
+from pathlib import Path
+from typing import Generator, Tuple
+
+import requests
+from transifex.api import transifex_api
+
+LANGUAGES = {
+    'es',
+    'fr',
+    'ja',
+    'pt_BR',
+    'zh_CN',
+}
+
+TRANSIFEX_ORGANIZATION = 'o:foreman'
+TRANSIFEX_RESOURCES = {
+    # Included in katello
+    'bastion_katello',
+    # Manual list since they're main projects and not plugins
+    'Foreman',
+    'hammer-cli',
+    # TODO: include as a plugin in foreman-plugin-overview
+    'hammer-cli-foreman',
+} | {
+    # TODO: replace this with foreman-plugin-overview retrieval
+    # Needs https://github.com/theforeman/foreman-plugin-overview/pull/6
+    # jq -r '.cli[][], .foreman[][] | select(.satellite and .translations) | .translations'
+    'foreman_ansible',
+    'foreman_azure_rm',
+    'foreman_bootdisk',
+    'foreman_discovery',
+    'foreman_google',
+    'foreman_kubevirt',
+    'foreman_leapp',
+    'foreman_openscap',
+    'foreman_puppet',
+    'foreman_remote_execution',
+    'foreman_rh_cloud',
+    'foreman_tasks',
+    'foreman_templates',
+    'hammer-cli-foreman-puppet',
+    'hammer-cli-foreman-remote-execution',
+    'hammer-cli-foreman-templates',
+    'hammer-cli-foreman-virt-who-configure',
+    'hammer-cli-katello',
+    'hammer_cli_foreman_ansible',
+    'hammer_cli_foreman_azure_rm',
+    'hammer_cli_foreman_discovery',
+    'hammer_cli_foreman_google',
+    'hammer_cli_foreman_kubevirt',
+    'hammer_cli_foreman_openscap',
+    'hammer_cli_foreman_tasks',
+    'katello',
+}
+
+PHRASE_BASE_URL = 'https://cloud.memsource.com/web'
+
+
+def set_up_transifex() -> None:
+    transifex_api.setup(auth=os.environ['TRANSIFEX_TOKEN'])
+
+
+def get_transifex_languages() -> list[transifex_api.Language]:
+    languages = [lang for lang in transifex_api.Language.all() if lang.code in LANGUAGES]
+    missing = LANGUAGES - {language.code for language in languages}
+    if missing:
+        raise Exception(f'Could not find lanuages: {", ".join(missing)}')
+    return languages
+
+
+def get_transifex_resources() -> list[transifex_api.Resource]:
+    project = transifex_api.Project.get(organization=TRANSIFEX_ORGANIZATION)
+    resources = [resource for resource in project.fetch('resources') if resource.name in
+                 TRANSIFEX_RESOURCES]
+    missing = TRANSIFEX_RESOURCES - {resource.name for resource in resources}
+    if missing:
+        raise Exception(f'Could not find resources: {", ".join(missing)}')
+    return resources
+
+
+def collect_resource_urls() -> Generator[Tuple[transifex_api.Resource, transifex_api.Language, str], None, None]:
+    languages = get_transifex_languages()
+    for resource in get_transifex_resources():
+        for language in languages:
+            url = transifex_api.ResourceTranslationsAsyncDownload.download(resource=resource,
+                                                                           language=language)
+            yield (resource, language, url)
+
+
+def transifex_download() -> dict[str, str]:
+    result = {}
+
+    session = requests.session()
+
+    for resource, language, url in collect_resource_urls():
+        print('Downloading', resource.name, 'in', language.code)
+        filename = f'{resource.slug}__{language.code}'
+        result[filename] = session.get(url).text
+
+    return result
+
+
+def transifex_upload(downloaded: dict[str, str]) -> None:
+    # TODO: transifex_api.ResourceTranslationsAsyncUpload.upload(resource, language, content)
+    raise NotImplementedError()
+
+
+def get_phrase_session() -> requests.Session:
+    session = requests.session()
+    # TODO: User agent?
+
+    credentials = Path('.phrase')
+    if credentials.exists():
+        data = json.loads(credentials.read_text('utf-8'))
+        # TODO: if now() < data['expires']
+        session.headers['Authorization'] = f'ApiToken {data["token"]}'
+        return session
+
+    auth = {
+        'userName': os.environ['PHRASE_USERNAME'],
+        'password': os.environ['PHRASE_PASSWORD'],
+    }
+    response = session.post(f'{PHRASE_BASE_URL}/api2/v1/auth/login', json=auth)
+    response.raise_for_status()
+
+    data = response.json()
+    token = data['token']
+    expires = data['expires']
+
+    credentials.write_text(json.dumps({'token': token, 'expires': expires}), 'utf-8')
+
+    session.headers['Authorization'] = f'ApiToken {token}'
+
+    return session
+
+
+def phrase_upload(session: requests.Session, project_id: str, downloaded: dict[str, str]) -> None:
+    for filename, content in downloaded.items():
+        language = filename.split('__')[-1]
+
+        # https://cloud.memsource.com/web/docs/api#operation/createJob
+        url = f'{PHRASE_BASE_URL}/api2/v1/projects/{project_id}/jobs'
+        metadata = {
+                'targetLangs': [language],
+            }
+        headers = {
+            'Memsource': json.dumps(metadata),
+            'Content-Disposition': f"attachment; filename*=UTF-8''{filename}",
+        }
+
+        print(f'Uploading {filename}')
+        response = session.post(url, headers=headers, data=content)
+        if not response.ok:
+            print('Failed to upload', filename)
+            print(response.status_code)
+
+
+def get_phrase_jobs(session: requests.Session, project_id: str) -> list[dict]:
+    url = f'{PHRASE_BASE_URL}/api2/v2/projects/{project_id}/jobs'
+
+    response = session.get(url)
+    response.raise_for_status()
+
+    data = response.json()
+
+    jobs = data['content']
+
+    for page in range(1, data['totalPages'] + 1):
+        response = session.get(url, params={'pageNumber': page})
+        response.raise_for_status()
+
+        data = response.json()
+        jobs += data['content']
+
+    return jobs
+
+def phrase_download(session: requests.Session, project_id: str) -> dict[str, str]:
+    result = {}
+
+    completed = Path('completed')
+    completed.mkdir(exist_ok=True)
+
+    for job in get_phrase_jobs(session, project_id):
+        assert job['filename'] and '/' not in job['filename']
+
+        print('Downloading', job['filename'])
+
+        # GET appears undocumented, but returns raw PO file
+        url = f"{PHRASE_BASE_URL}/api2/v1/projects/{project_id}/jobs/{job['uid']}/targetFile"
+        response = session.get(url)
+        response.raise_for_status()
+
+        file = completed / job['filename']
+        file.write_text(response.text, 'utf-8')
+
+        result[file.name] = response.text
+
+    return result
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--source', help='Where to sync from',
+                        choices=('transifex', 'phrase', 'local'), default='local')
+    parser.add_argument('--destination', help='Where to sync to',
+                        choices=('transifex', 'phrase', 'local'))
+    parser.add_argument('--local-directory', help='Local directory to store files in',
+                        default='files')
+    parser.add_argument('--phrase-project-id', help='Phrase project ID')
+
+    parsed = parser.parse_args()
+
+    if parsed.source == parsed.destination:
+        parser.exit(1, 'Source and destination must differ')
+
+    if 'transifex' in (parsed.source, parsed.destination):
+        set_up_transifex()
+
+    if 'phrase' in (parsed.source, parsed.destination):
+        phrase_session = get_phrase_session()
+        if not parsed.phrase_project_id:
+            parser.exit(1, 'Phrase project ID is mandatory when using Phrase')
+
+    if parsed.source == 'transifex':
+        downloaded = transifex_download()
+    elif parsed.source == 'phrase':
+        downloaded = phrase_download(phrase_session, parsed.phrase_project_id)
+    elif parsed.source == 'local':
+        local = Path(parsed.local_directory)
+        downloaded = {file.stem: file.read_text() for file in sorted(local.glob('*.po'))}
+    else:
+        downloaded = {}
+
+    if parsed.source and parsed.source != 'local':
+        source = Path(parsed.source)
+        source.mkdir()
+        for filename, text in downloaded.items():
+            file = source / f'{filename}.po'
+            file.write_text(text, encoding='utf-8')
+
+    if parsed.destination == 'transifex':
+        transifex_upload(downloaded)
+    elif parsed.destination == 'phrase':
+        phrase_upload(phrase_session, parsed.phrase_project_id, downloaded)
+
+
+if __name__ == '__main__':
+    main()
