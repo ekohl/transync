@@ -264,23 +264,23 @@ def main():
     parsed = parser.parse_args()
 
     if parsed.source == parsed.destination:
-        parser.exit(1, 'Source and destination must differ')
+        parser.exit(1, 'Source and destination must differ\n')
 
     if 'transifex' in (parsed.source, parsed.destination):
         try:
             transifex_token = os.environ['TRANSIFEX_TOKEN']
         except KeyError:
-            parser.exit(1, 'TRANSIFEX_TOKEN must be set environment variable')
+            parser.exit(1, 'TRANSIFEX_TOKEN must be set environment variable\n')
 
         transifex = Transifex(transifex_token)
 
     if 'phrase' in (parsed.source, parsed.destination):
         if not parsed.phrase_project_id:
-            parser.exit(1, 'Phrase project ID is mandatory when using Phrase')
+            parser.exit(1, 'Phrase project ID is mandatory when using Phrase\n')
         try:
             phrase = Phrase(parsed.phrase_project_id)
         except KeyError:
-            parser.exit(1, 'PHRASE_USERNAME or PHRASE_PASSWORD not set and environment variables')
+            parser.exit(1, 'PHRASE_USERNAME or PHRASE_PASSWORD not set and environment variables\n')
 
     if parsed.source == 'transifex':
         source = transifex
