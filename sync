@@ -166,6 +166,7 @@ class Phrase(Engine):
         for filename, content in translations.items():
             language = filename.split('__')[-1]
 
+            # TODO: determine if a job already exists and update the source file, else create
             # https://cloud.memsource.com/web/docs/api#operation/createJob
             url = f'{self.BASE_URL}/api2/v1/projects/{self.project_id}/jobs'
             metadata = {
