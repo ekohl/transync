@@ -163,30 +163,62 @@ class Phrase(Engine):
         return session
 
     def upload(self, translations: dict[str, str]) -> None:
-        for filename, content in translations.items():
-            language = filename.split('__')[-1]
+        # only non-final jobs can be updated
+        allowed_statuses = ["ACCEPTED", "DECLINED", "DELIVERED", "EMAILED", "NEW", "REJECTED"]
+        jobs = {job['filename']: job['uid'] for job in self._get_jobs(allowed_statuses)}
 
-            # TODO: determine if a job already exists and update the source file, else create
-            # https://cloud.memsource.com/web/docs/api#operation/createJob
-            url = f'{self.BASE_URL}/api2/v1/projects/{self.project_id}/jobs'
-            metadata = {
-                    'targetLangs': [language],
+        for filename, content in translations.items():
+            try:
+                job = jobs[filename]
+            except KeyError:
+                # https://cloud.memsource.com/web/docs/api#operation/createJob
+                url = f'{self.BASE_URL}/api2/v1/projects/{self.project_id}/jobs'
+
+                language = filename.split('__')[-1]
+
+                metadata = {
+                        'targetLangs': [language],
+                        'useProjectFileImportSettings': True,
+                        'preTranslate': False,
+                    }
+            else:
+                # https://cloud.memsource.com/web/docs/api#operation/updateSource
+                url = f'{self.BASE_URL}/api2/v1/projects/{self.project_id}/jobs/source'
+
+                # Otherwise the file type isn't detected
+                filename += '.po'
+
+                metadata = {
+                    'jobs': [
+                        {
+                            'uid': job,
+                        },
+                    ],
                 }
+
             headers = {
                 'Memsource': json.dumps(metadata),
                 'Content-Disposition': f"attachment; filename*=UTF-8''{filename}",
             }
 
             print(f'Uploading {filename}')
-            response = self._session.post(url, headers=headers, data=content)
+            response = self._session.post(url, headers=headers, data=content.encode('utf-8'))
             if not response.ok:
                 print('Failed to upload', filename)
                 print(response.status_code)
+                try:
+                    print(response.json()['errorCode'])
+                except Exception:  # pylint: disable=broad-except
+                    print(response.text)
 
 
-    def _get_jobs(self) -> list[dict]:
+    def _get_jobs(self, allowed_statuses: list[str]=None) -> list[dict]:
         # https://cloud.memsource.com/web/docs/api#operation/listPartsV2
         url = f'{self.BASE_URL}/api2/v2/projects/{self.project_id}/jobs'
+
+        params = {}
+        if allowed_statuses is not None:
+            params['status'] = allowed_statuses
 
         response = self._session.get(url)
         response.raise_for_status()
