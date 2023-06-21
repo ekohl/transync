@@ -70,7 +70,7 @@ class Engine:
         path = Path(self.__class__.__name__.lower())
         path.mkdir(exist_ok=True)
         for filename, text in translations.items():
-            file = source / f'{filename}.po'
+            file = path / f'{filename}.po'
             file.write_text(text, encoding='utf-8')
 
 
