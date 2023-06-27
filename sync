@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator, Optional, Tuple
 
@@ -138,9 +139,10 @@ class Phrase(Engine):
         credentials = Path('.phrase')
         if credentials.exists():
             data = json.loads(credentials.read_text('utf-8'))
-            # TODO: if now() < data['expires']
-            session.headers['Authorization'] = f'ApiToken {data["token"]}'
-            return session
+            expires = datetime.strptime(data['expires'], '%Y-%m-%dT%H:%M:%S%z')
+            if datetime.now(timezone.utc) < expires:
+                session.headers['Authorization'] = f'ApiToken {data["token"]}'
+                return session
 
         # https://cloud.memsource.com/web/docs/api#operation/login
         url = f'{self.BASE_URL}/api2/v1/auth/login'
