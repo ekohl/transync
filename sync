@@ -115,7 +115,9 @@ class Transifex(Engine):
         for resource, language, url in self._collect_resource_urls():
             print('Downloading', resource.name, 'in', language.code)
             filename = f'{resource.slug}__{language.code}'
-            result[filename] = session.get(url).text
+            response = session.get(url)
+            response.encoding = 'utf-8'
+            result[filename] = response.text
 
         return result
 
