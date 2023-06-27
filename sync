@@ -103,7 +103,8 @@ class Transifex(Engine):
         for resource in self._get_resources():
             for language in languages:
                 url = transifex_api.ResourceTranslationsAsyncDownload.download(resource=resource,
-                                                                               language=language)
+                                                                               language=language,
+                                                                               interval=0.3)
                 yield (resource, language, url)
 
 
