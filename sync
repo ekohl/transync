@@ -124,8 +124,22 @@ class Transifex(Engine):
 
 
     def upload(self, translations: dict[str, str]) -> None:
-        # TODO: transifex_api.ResourceTranslationsAsyncUpload.upload(resource, language, content)
-        raise NotImplementedError()
+        languages = self._get_languages()
+        for resource in self._get_resources():
+            for language in languages:
+                try:
+                    content = translations[f'{resource.name}__{language.code}']
+                except KeyError:
+                    pass
+                else:
+                    print('Uploading', resource.name, 'in', language.code)
+                    res = transifex_api.ResourceTranslationsAsyncUpload.upload(resource=resource,
+                                                                               language=language,
+                                                                               content=content,
+                                                                               interval=0.3)
+                    if res['translations_created'] or res['translations_updated']:
+                        print(' ', res["translations_created"], 'created;',
+                              res["translations_updated"], 'updated')
 
 
 class Phrase(Engine):
