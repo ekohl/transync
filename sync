@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from datetime import datetime, timezone
+from itertools import chain
 from pathlib import Path
 from typing import Generator, Optional, Tuple
 
@@ -19,7 +20,7 @@ LANGUAGES = {
 }
 
 TRANSIFEX_ORGANIZATION = 'o:foreman'
-TRANSIFEX_RESOURCES = {
+TRANSIFEX_UNTRACKED_RESOURCES = {
     # Included in katello
     'bastion_katello',
     # Manual list since they're main projects and not plugins
@@ -27,36 +28,6 @@ TRANSIFEX_RESOURCES = {
     'hammer-cli',
     # TODO: include as a plugin in foreman-plugin-overview
     'hammer-cli-foreman',
-} | {
-    # TODO: replace this with foreman-plugin-overview retrieval
-    # Needs https://github.com/theforeman/foreman-plugin-overview/pull/6
-    # jq -r '.cli[][], .foreman[][] | select(.satellite and .translations) | .translations'
-    'foreman_ansible',
-    'foreman_azure_rm',
-    'foreman_bootdisk',
-    'foreman_discovery',
-    'foreman_google',
-    'foreman_kubevirt',
-    'foreman_leapp',
-    'foreman_openscap',
-    'foreman_puppet',
-    'foreman_remote_execution',
-    'foreman_rh_cloud',
-    'foreman_tasks',
-    'foreman_templates',
-    'hammer-cli-foreman-puppet',
-    'hammer-cli-foreman-remote-execution',
-    'hammer-cli-foreman-templates',
-    'hammer-cli-foreman-virt-who-configure',
-    'hammer-cli-katello',
-    'hammer_cli_foreman_ansible',
-    'hammer_cli_foreman_azure_rm',
-    'hammer_cli_foreman_discovery',
-    'hammer_cli_foreman_google',
-    'hammer_cli_foreman_kubevirt',
-    'hammer_cli_foreman_openscap',
-    'hammer_cli_foreman_tasks',
-    'katello',
 }
 
 
@@ -80,6 +51,15 @@ class Transifex(Engine):
         transifex_api.setup(auth=auth)
         self._client = transifex_api
 
+    def _get_resource_names(self) -> Generator[str, None, None]:
+        response = requests.get('https://theforeman.github.io/foreman-plugin-overview/index.json')
+        response.raise_for_status()
+        data = response.json()
+        for item in chain(data['foreman']['plugins'], data['smart_proxy']['providers'],
+                          data['smart_proxy']['modules']):
+            if item['translations'] and item['satellite']:
+                yield os.path.basename(item['translations'].rstrip('/'))
+
     def _get_languages(self) -> list[transifex_api.Language]:
         languages = [lang for lang in self._client.Language.all() if lang.code in LANGUAGES]
         missing = LANGUAGES - {language.code for language in languages}
@@ -88,10 +68,12 @@ class Transifex(Engine):
         return languages
 
     def _get_resources(self) -> list[transifex_api.Resource]:
+        resource_names = TRANSIFEX_UNTRACKED_RESOURCES | set(self._get_resource_names())
+
         project = self._client.Project.get(organization=TRANSIFEX_ORGANIZATION)
         resources = [resource for resource in project.fetch('resources') if resource.name in
-                     TRANSIFEX_RESOURCES]
-        missing = TRANSIFEX_RESOURCES - {resource.name for resource in resources}
+                     resource_names]
+        missing = resource_names - {resource.name for resource in resources}
         if missing:
             raise Exception(f'Could not find resources: {", ".join(missing)}')
         return resources
