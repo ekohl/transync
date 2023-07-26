@@ -254,9 +254,9 @@ class Phrase(Engine):
             response.raise_for_status()
 
             file = completed / job['filename']
-            file.write_text(response.text, 'utf-8')
+            file.write_bytes(response.content)
 
-            result[file.name] = response.text
+            result[file.name] = response.content.decode('utf-8')
 
         return result
 
