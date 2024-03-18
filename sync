@@ -26,8 +26,6 @@ TRANSIFEX_UNTRACKED_RESOURCES = {
     # Manual list since they're main projects and not plugins
     'Foreman',
     'hammer-cli',
-    # TODO: include as a plugin in foreman-plugin-overview
-    'hammer-cli-foreman',
 }
 
 
@@ -55,8 +53,8 @@ class Transifex(Engine):
         response = requests.get('https://theforeman.github.io/foreman-plugin-overview/index.json')
         response.raise_for_status()
         data = response.json()
-        for item in chain(data['foreman']['plugins'], data['smart_proxy']['providers'],
-                          data['smart_proxy']['modules']):
+        for item in chain(data['cli']['plugins'], data['foreman']['plugins'],
+                          data['smart_proxy']['providers'], data['smart_proxy']['modules']):
             if item['translations'] and item['satellite']:
                 yield os.path.basename(item['translations'].rstrip('/'))
 
