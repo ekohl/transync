@@ -24,7 +24,7 @@ TRANSIFEX_UNTRACKED_RESOURCES = {
     # Included in katello
     'bastion_katello',
     # Manual list since they're main projects and not plugins
-    'Foreman',
+    'foreman',
     'hammer-cli',
 }
 
@@ -69,9 +69,9 @@ class Transifex(Engine):
         resource_names = TRANSIFEX_UNTRACKED_RESOURCES | set(self._get_resource_names())
 
         project = self._client.Project.get(organization=TRANSIFEX_ORGANIZATION)
-        resources = [resource for resource in project.fetch('resources') if resource.name in
+        resources = [resource for resource in project.fetch('resources') if resource.slug in
                      resource_names]
-        missing = resource_names - {resource.name for resource in resources}
+        missing = resource_names - {resource.slug for resource in resources}
         if missing:
             raise Exception(f'Could not find resources: {", ".join(missing)}')
         return resources
