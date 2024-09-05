@@ -12,10 +12,9 @@ import requests
 from transifex.api import transifex_api
 
 LANGUAGES = {
-    'es',
     'fr',
     'ja',
-    'pt_BR',
+    'ko',
     'zh_CN',
 }
 
