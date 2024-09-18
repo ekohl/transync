@@ -107,11 +107,12 @@ class Transifex(Engine):
         for resource in self._get_resources():
             for language in languages:
                 try:
-                    content = translations[f'{resource.name}__{language.code}']
-                except KeyError:
+                    content = translations[f'{resource.slug}__{language.code}']
+                except KeyError as e:
+                    print(f"Translation not found: {e}")
                     pass
                 else:
-                    print('Uploading', resource.name, 'in', language.code)
+                    print('Uploading', resource.slug, 'in', language.code)
                     res = transifex_api.ResourceTranslationsAsyncUpload.upload(resource=resource,
                                                                                language=language,
                                                                                content=content,
