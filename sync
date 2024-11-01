@@ -242,19 +242,20 @@ class Phrase(Engine):
         completed.mkdir(exist_ok=True)
 
         for job in self._get_jobs(['COMPLETED']):
-            assert job['filename'] and '/' not in job['filename']
+            if job['targetLang'] in LANGUAGES:
+                assert job['filename'] and '/' not in job['filename']
 
-            print('Downloading', job['filename'])
+                print('Downloading', job['filename'])
 
-            # GET appears undocumented, but returns raw PO file
-            url = f"{self.BASE_URL}/api2/v1/projects/{self.project_id}/jobs/{job['uid']}/targetFile"
-            response = self._session.get(url)
-            response.raise_for_status()
+                # GET appears undocumented, but returns raw PO file
+                url = f"{self.BASE_URL}/api2/v1/projects/{self.project_id}/jobs/{job['uid']}/targetFile"
+                response = self._session.get(url)
+                response.raise_for_status()
 
-            file = completed / job['filename']
-            file.write_bytes(response.content)
+                file = completed / job['filename']
+                file.write_bytes(response.content)
 
-            result[file.name] = response.content.decode('utf-8')
+                result[file.name] = response.content.decode('utf-8')
 
         return result
 
