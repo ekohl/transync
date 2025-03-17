@@ -142,7 +142,7 @@ class Phrase(Engine):
                 return session
 
         # https://cloud.memsource.com/web/docs/api#operation/login
-        url = f'{self.BASE_URL}/api2/v1/auth/login'
+        url = f'{self.BASE_URL}/api2/v3/auth/login'
         auth = {
             'userName': os.environ['PHRASE_USERNAME'],
             'password': os.environ['PHRASE_PASSWORD'],
