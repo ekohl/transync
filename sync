@@ -241,8 +241,11 @@ class Phrase(Engine):
         completed = Path('completed')
         completed.mkdir(exist_ok=True)
 
+        # targetLang from the API is lower cased
+        languages = {lang.lower() for lang in LANGUAGES}
+
         for job in self._get_jobs(['COMPLETED']):
-            if job['targetLang'] in LANGUAGES:
+            if job['targetLang'] in languages:
                 assert job['filename'] and '/' not in job['filename']
 
                 print('Downloading', job['filename'])
