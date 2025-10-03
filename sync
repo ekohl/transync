@@ -258,7 +258,7 @@ class Phrase(Engine):
                 file = completed / job['filename']
                 file.write_bytes(response.content)
 
-                result[file.name] = response.content.decode('utf-8')
+                result[file.stem] = response.content.decode('utf-8')
 
         return result
 
